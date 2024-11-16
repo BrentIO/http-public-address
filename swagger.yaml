@@ -1,0 +1,224 @@
+openapi: 3.1.0
+info:
+  title: http-public-address
+  description: Create and play public address messages from Home Assistant via Python
+  version: 2024.11.1
+servers:
+  - url: http://{domain}
+    variables:
+      domain:
+        default: 192.168.10.101
+        description: IP address of the server's web interface
+tags:
+  - name: Synthesize Text
+    description: Operations to synthesize text-to-speech using AWS Polly
+  - name: Play Audio
+    description: Operations to play existing audio files where the filename is known
+
+
+##########################################################
+## NOTE: This may not render except in the next-gen     ##
+## Swagger UI renderer https://editor-next.swagger.io/  ##
+##########################################################
+
+paths:
+
+
+##########################################################
+## Synthesize Text                                      ##
+##########################################################
+  
+  /api/synthesize:
+    post:
+      tags:
+        - Synthesize Text
+      summary: Synthesizes text to audio file
+      description: Synthesizes supplied text into an MP3 file, which is saved to the local device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: A unique name that briefly describes the sentence(s) being synthesized
+                  minLength: 3
+                  maxLength: 50
+                  examples:
+                    - Doorbell
+                sentences:
+                  type: array
+                  items:
+                    type: string
+                    description: An array of SSML sentences that should be synthesized into a single audio file
+                    examples:
+                      - "<prosody volume=\"x-loud\">There is someone at the front door.</prosody>"
+                callbackUrl:
+                  $ref: '#/components/schemas/callbackUrl'
+              required:
+                - name
+                - sentences
+      callbacks:
+        synthesisComplete:
+          "{$request.body#/callbackUrl}":
+            post:
+              summary: Text synthesized successfully
+              description: If the `callbackUrl` was populated in the request and the synthesis was successful, a callback will be made.  If an error occurs, the callback is not made.  The response code from the callback webhook server is ignored.  The request is not retried.
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      properties:
+                        event:
+                          $ref: '#/components/schemas/event'
+                        filename:
+                          $ref: '#/components/schemas/filename'
+                    examples:
+                      "Synthesis Complete":
+                        value:
+                          event: SYNTHESIS_COMPLETE
+                          filename: doorbell.mp3
+      responses:
+        '202':
+          description: Accepted
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              examples:
+                Mising Field:
+                  $ref: '#/components/examples/missingFieldError'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              examples:
+                Internal Server Error:
+                  $ref: '#/components/examples/internalServerError'
+
+
+##########################################################
+## Play Audio                                           ##
+##########################################################
+  
+  /api/playback:
+    post:
+      tags:
+        - Play Audio
+      summary: Plays the requested audio file
+      description: Plays an audio file that already exists by filename
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filename:
+                  $ref: '#/components/schemas/filename'
+                callbackUrl:
+                  $ref: '#/components/schemas/callbackUrl'
+              required:
+                - name
+                - sentences
+      callbacks:
+        playbackEvent:
+            "{$request.body#/callbackUrl}":
+              post:
+                summary: Audio playback is about to start or has already completed
+                requestBody:
+                  required: true
+                  content:
+                    application/json:
+                      schema:
+                        type: object
+                        properties:
+                          event:
+                            $ref: '#/components/schemas/event'
+                          filename:
+                            $ref: '#/components/schemas/filename'
+                      examples:
+                        "Playback Start":
+                          description: If the `callbackUrl` was populated in the request the Playback Start event will be called immediately before the audio is played.  The response code from the callback webhook server is ignored.  The request is not retried.
+                          value:
+                            event: PLAYBACK_START
+                            filename: doorbell.mp3
+                        "Playback Complete":
+                          description: If the `callbackUrl` was populated in the request the Playback Complete event will be called immediately after the audio is played.  The response code from the callback webhook server is ignored.  The request is not retried.
+                          value:
+                            event: PLAYBACK_COMPLETE
+                            filename: doorbell.mp3
+      responses:
+        '202':
+          description: Accepted
+        '404':
+          description: File Not Found
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              examples:
+                Mising Field:
+                  $ref: '#/components/examples/missingFieldError'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              examples:
+                Internal Server Error:
+                  $ref: '#/components/examples/internalServerError'
+
+
+components:
+
+  schemas:
+
+    callbackUrl:
+      type: string
+      format: uri
+      description: URI for the webhook server to call when an event has occurred
+
+    filename:
+      type: string
+      description: Reference to the file which exists on disk
+
+    event:
+      type: string
+      description: The event that occurred
+      enum:
+        - SYNTHESIS_COMPLETE
+        - PLAYBACK_START
+        - PLAYBACK_COMPLETE
+        
+  examples:
+    internalServerError:
+      value:
+        message: Unexpected error
+
+    missingFieldError:
+      value:
+        message: '''name'' field is required'

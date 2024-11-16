@@ -1,0 +1,75 @@
+title http-public-address
+
+actor User
+
+participantgroup Home Assistant Server
+  materialdesignicons F07D0 "Platform" as HA #19bcf2
+  materialdesignicons F04AA "Node Red" as NodeRed #red
+  materialdesignicons F062F "Node Red Webook" as webhook #red
+end
+
+participantgroup Service
+  materialdesignicons F059F "Handler" as web #blue
+  materialdesignicons F02CA "Local Disk" as disk
+end
+
+fontawesome6brands f375 "AWS Polly" as aws #gold
+
+User->HA: Announcement request
+
+HA->NodeRed: Format request
+NodeRed->web: POST: ""/api/synthesize""
+web->NodeRed: HTTP: 202/Accepted
+web->disk:Check filename exists
+
+group File exists
+  disk->web: Filename
+end
+
+group File does not exist
+  web->aws: Start Speech Synthesis Task
+  
+  group #808080 Error condition #FFFFFF
+    aws-xweb:<color:#e67373>Sequence ends</color>
+  end
+  
+  aws->web: Binary data
+  web->disk:Write binary data
+  disk->web: Filename
+end
+
+group #808080 Error condition #FFFFFF
+  web-x(3)webhook: No request will be made;\n<color:#e67373>Sequence ends</color>
+end
+
+group Webhook Callback Not Specified
+  web-x(3)webhook: No request will be made;\n<color:#e67373>Sequence ends</color>
+end
+
+web->(3)webhook: POST: <color:#blue>""SYNTHESIS_COMPLETE""</color>
+webhook->web: (HTTP response ignored)
+webhook->NodeRed: Synthesis complete payload
+
+NodeRed-#green>NodeRed: <color:#green>If AirPlay is playing,\nchange AirPlay volume to 50%</color>
+
+NodeRed->web: POST: ""/api/playback""
+web->NodeRed: HTTP: 204/No content
+disk->web:Binary data
+
+group #808080 File not found #FFFFFF
+  disk->web: File not found
+  web->NodeRed: HTTP: 404\n<color:#e67373>Sequence ends</color>
+end
+
+group #808080 Error condition #FFFFFF
+  web->NodeRed: HTTP: 500\n<color:#e67373>Sequence ends</color>
+end
+
+
+web->(3)webhook: POST: <color:#blue>""PLAYBACK_START""</color>
+webhook-->web: (HTTP response ignored)
+web->(3)User: Audio is played
+web->(3)webhook: POST: <color:#blue>""PLAYBACK_COMPLETE""</color>
+webhook-->web: (HTTP response ignored)
+
+NodeRed-#green>NodeRed: <color:#green>If AirPlay was previously playing,\nreset AirPlay volume to 100%</color>
