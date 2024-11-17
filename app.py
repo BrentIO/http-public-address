@@ -11,6 +11,8 @@ from enum import Enum
 import time
 from pydub import AudioSegment
 from pydub.playback import play
+import re
+import boto3
 
 
 app = Flask(__name__)
@@ -30,11 +32,22 @@ def post_api_synthesize():
     if not isinstance(request.json['name'], str):
         abort(400, "Field 'name' must be a string")
 
+    request.json['name'] = str(request.json['name']).strip()
+
+    if len(request.json['name']) < 4:
+        abort(400, "Field 'name' must be at least 3 characters in length")
+
+    if len(request.json['name']) > 240:
+        request.json['name'] = str(request.json['name'])[:240]
+
     if "sentences" not in request.json:
         abort(400, "Missing 'sentences' field in request")
 
     if not isinstance(request.json['sentences'], list):
         abort(400, "Field 'sentences' must be an array")
+
+    if len(request.json['sentences']) < 1:
+        abort(400, "There must be at least 1 sentence")
 
     for sentence in request.json['sentences']:
         if not isinstance(sentence, str):
@@ -144,8 +157,13 @@ def worker_playback(queue:Queue, settings:dict) -> None:
                 request = queue.get()
 
                 logger.debug("Requested audio file be played: " + request['filename'] + "\tPath: " + os.path.join(settings['audio_path'], request['filename']) + "\tFormat: " +str(os.path.splitext(request['filename'])[1]).replace(".", ""))
-
                 sound = AudioSegment.from_file(os.path.join(settings['audio_path'], request['filename']), format=str(os.path.splitext(request['filename'])[1]).replace(".", ""))
+
+                if "playback_db" in settings:
+                    gain_adjustment = settings['playback_db'] - sound.dBFS
+                    sound = sound.apply_gain(gain_adjustment)
+                    logger.debug("Applied gain of " + str(gain_adjustment))
+
                 t = Process(target=play, args=(sound,))
                 
                 if currentState == playerStates.IDLE:
@@ -172,7 +190,6 @@ def worker_playback(queue:Queue, settings:dict) -> None:
             return False
 
         except Exception as ex:
-            print(ex)
             logger.exception(ex)
             pass
 
@@ -213,19 +230,57 @@ def worker_synthesizer(queue:Queue, settings:dict) -> None:
 
     logger.debug("Synthesizer worker started")
 
+    pollyClient = boto3.Session(region_name=settings['aws']['region']).client('polly')
+
     while True:
         try:
             while queue.empty() == False:
                 request = queue.get()
-                print(request)
 
-                print("Do work here")
+                filename = re.sub('[^0-9a-zA-Z]+', '_', request["name"].lower()).replace("__", "_") + ".mp3"
+                filename = filename.replace("_.", ".")
+
+                if "overwrite" not in request:
+                    request['overwrite'] = False
+
+                if "voice" not in request:
+                    request["voice"] = settings['aws']['voice']
+
+                if "engine" not in request:
+                    request["engine"] = settings['aws']['engine']
+
+                if "language" not in request:
+                    request["language"] = settings['aws']['language']
+
+                if not os.path.isfile(os.path.join(settings['audio_path'], filename)) or request['overwrite'] == True:
+
+                    text = "<speak>"
+
+                    for sentence in request["sentences"]:
+                        text = text + "<s>" + sentence + "</s>"
+
+                    text = text + "</speak>"
+
+                    pollyResponse = pollyClient.synthesize_speech(
+                        Engine = request["engine"],
+                        LanguageCode = request["language"],
+                        OutputFormat = "mp3",
+                        Text = text,
+                        TextType = 'ssml',
+                        VoiceId = request["voice"]
+                    )
+
+                    file = open(os.path.join(settings['audio_path'], filename), 'wb')
+                    file.write(pollyResponse['AudioStream'].read())
+                    file.close()
+
+                    logger.debug("Created or overwrote existing file " + os.path.join(settings['audio_path'], filename))
 
                 if "callbackUrl" in request:
                     callbackPayload = {"event":"SYNTHESIS_COMPLETE"}
-                    callbackPayload['filename'] = "TO DO"
+                    callbackPayload['filename'] = filename
                     sendCallback(request['callbackUrl'], callbackPayload)
-                logger.debug("I did work")
+                    logger.debug(callbackPayload)
 
 
         except KeyboardInterrupt:
@@ -233,10 +288,8 @@ def worker_synthesizer(queue:Queue, settings:dict) -> None:
             return False
         
         except Exception as ex:
-            print(ex)
             logger.exception(ex)
             pass
-        
 
 
 def getLogLevel(settings:dict) -> logging:
@@ -268,7 +321,6 @@ def getLogLevel(settings:dict) -> logging:
         return logging.CRITICAL
 
 
-
 if __name__ == "__main__":
     global logger
     global qSynthesizer
@@ -291,6 +343,21 @@ if __name__ == "__main__":
 
     if "audio_path" not in settings:
         settings['audio_path'] = "/etc/P5Software/http-public-address/audio"
+
+    if "aws" not in settings:
+        settings['aws'] = {}
+
+    if "region" not in settings['aws']:
+        settings['aws']['region'] = "us-east-1"
+
+    if "voice" not in settings['aws']:
+        settings['aws']['voice'] = "Matthew"
+
+    if "engine" not in settings['aws']:
+        settings['aws']['engine'] = "neural"
+
+    if "language" not in settings['aws']:
+        settings['aws']['language'] = "en-US"
 
     if getLogLevel(settings) == logging.DEBUG:
         print("Observed Settings:")
