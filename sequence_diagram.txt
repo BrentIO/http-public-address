@@ -69,6 +69,10 @@ end
 web->(3)webhook: POST: <color:#blue>""PLAYBACK_START""</color>
 webhook-->web: (HTTP response ignored)
 web->(3)User: Audio is played
+group Multiple Playback Requests in Queue
+web->(3)User: Audio is played
+web->(3)User: Audio is played
+end
 web->(3)webhook: POST: <color:#blue>""PLAYBACK_COMPLETE""</color>
 webhook-->web: (HTTP response ignored)
 
