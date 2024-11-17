@@ -1,4 +1,4 @@
-from flask import Flask, request, abort, jsonify
+from flask import Flask, request, abort
 from werkzeug.exceptions import HTTPException
 import json
 from multiprocessing import Process, Queue
@@ -9,11 +9,11 @@ import requests
 import yaml
 from enum import Enum
 import time
+from pydub import AudioSegment
+from pydub.playback import play
+
 
 app = Flask(__name__)
-global settings
-settings = {}
-
 
 
 @app.route("/api/synthesize", methods=['POST'])
@@ -57,6 +57,9 @@ def post_api_playback():
 
     if not isinstance(request.json['filename'], str):
         abort(400, "Field 'filename' must be a string")
+
+    if not os.path.isfile(os.path.join(settings['audio_path'], request.json['filename'])):
+        abort(404)
 
     qPlayback.put(request.json)  
     return "", 202
@@ -139,18 +142,22 @@ def worker_playback(queue:Queue, settings:dict) -> None:
         try:
             while queue.empty() == False:
                 request = queue.get()
-                print(request)
 
+                logger.debug("Requested audio file be played: " + request['filename'] + "\tPath: " + os.path.join(settings['audio_path'], request['filename']) + "\tFormat: " +str(os.path.splitext(request['filename'])[1]).replace(".", ""))
+
+                sound = AudioSegment.from_file(os.path.join(settings['audio_path'], request['filename']), format=str(os.path.splitext(request['filename'])[1]).replace(".", ""))
+                t = Process(target=play, args=(sound,))
+                
                 if currentState == playerStates.IDLE:
                     if "callbackUrl" in request:
                         callbackPayload = {"event":"PLAYBACK_START"}
                         sendCallback(request['callbackUrl'], callbackPayload)
                     currentState = playerStates.PLAYING
-
-
-                print("Play file here")
-                time.sleep(3)
-
+                    logger.debug("Playback started")
+                
+                t.start()
+                time.sleep((len(sound) + settings['playback_wait_ms'])/1000) #Play is an async function that never completes -- pad settings['playback_wait_ms'] to the length of the audio file and then kill the process
+                t.kill()
 
                 if queue.empty() == True:
                     if currentState == playerStates.PLAYING:
@@ -158,6 +165,7 @@ def worker_playback(queue:Queue, settings:dict) -> None:
                             callbackPayload = {"event":"PLAYBACK_COMPLETE"}
                             sendCallback(request['callbackUrl'], callbackPayload)
                         currentState = playerStates.IDLE
+                        logger.debug("Playback complete")
 
         except KeyboardInterrupt:
             logger.debug("Playback worker stopped")
@@ -167,6 +175,15 @@ def worker_playback(queue:Queue, settings:dict) -> None:
             print(ex)
             logger.exception(ex)
             pass
+
+        finally:
+            if queue.empty() == True:
+                if currentState == playerStates.PLAYING:
+                    if "callbackUrl" in request:
+                        callbackPayload = {"event":"PLAYBACK_COMPLETE"}
+                        sendCallback(request['callbackUrl'], callbackPayload)
+                    currentState = playerStates.IDLE
+                    logger.debug("Playback complete")
 
 
 def sendCallback(url:str, payload:object):
@@ -256,27 +273,29 @@ if __name__ == "__main__":
     global logger
     global qSynthesizer
     global qPlayback
+    global settings
+    settings = {}
 
-    try:
-
-        with open('settings.yaml', 'r') as f:
+    if os.path.isfile(os.path.join(os.path.realpath(os.path.dirname(__file__)), "settings.yaml")):
+        with open(os.path.join(os.path.realpath(os.path.dirname(__file__)), "settings.yaml"), 'r') as f:
             settings = yaml.load(f, Loader=yaml.SafeLoader)
 
-        if "http_port" not in settings:
-            settings['http_port'] = 8080
+    if "http_port" not in settings:
+        settings['http_port'] = 8080
 
-        if "log_level" not in settings:
-            settings['log_level'] = "INFO"
+    if "log_level" not in settings:
+        settings['log_level'] = "INFO"
 
-        if getLogLevel(settings) == logging.DEBUG:
-            print("Observed Settings:")
-            for entry in settings:
-                print("\t", entry, ":", settings[entry])
+    if "playback_wait_ms" not in settings or isinstance(settings['playback_wait_ms'], int) == False:
+        settings['playback_wait_ms'] = 350
 
+    if "audio_path" not in settings:
+        settings['audio_path'] = "/etc/P5Software/http-public-address/audio"
 
-    except Exception as ex:
-        print(ex)
-        exit(-1)
+    if getLogLevel(settings) == logging.DEBUG:
+        print("Observed Settings:")
+        for entry in settings:
+            print("\t", entry, ":", settings[entry])
 
     logger = logging.getLogger((__file__))
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] - %(message)s')
