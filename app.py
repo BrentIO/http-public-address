@@ -342,7 +342,7 @@ if __name__ == "__main__":
         settings['playback_wait_ms'] = 350
 
     if "audio_path" not in settings:
-        settings['audio_path'] = "/etc/P5Software/http-public-address/audio"
+        settings['audio_path'] = "/etc/P5Software/audio"
 
     if "aws" not in settings:
         settings['aws'] = {}
