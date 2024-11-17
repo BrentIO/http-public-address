@@ -96,7 +96,7 @@ paths:
                     type: string
               examples:
                 Mising Field:
-                  $ref: '#/components/examples/missingFieldError'
+                  $ref: '#/components/examples/missingFieldNameError'
         '500':
           description: Internal Server Error
           content:
@@ -133,13 +133,18 @@ paths:
                 callbackUrl:
                   $ref: '#/components/schemas/callbackUrl'
               required:
-                - name
-                - sentences
+                - filename
+            examples:
+              "Playback Request":
+                description: Doorbell playback request
+                value:
+                  filename: "doorbell.mp3"
+
       callbacks:
         playbackEvent:
             "{$request.body#/callbackUrl}":
               post:
-                summary: Audio playback is about to start or has already completed
+                summary: Audio playback is about to start or has already completed.  Note that the entire queue of audio files will be played between the Start and Complete events.
                 requestBody:
                   required: true
                   content:
@@ -149,19 +154,15 @@ paths:
                         properties:
                           event:
                             $ref: '#/components/schemas/event'
-                          filename:
-                            $ref: '#/components/schemas/filename'
                       examples:
                         "Playback Start":
                           description: If the `callbackUrl` was populated in the request the Playback Start event will be called immediately before the audio is played.  The response code from the callback webhook server is ignored.  The request is not retried.
                           value:
                             event: PLAYBACK_START
-                            filename: doorbell.mp3
                         "Playback Complete":
                           description: If the `callbackUrl` was populated in the request the Playback Complete event will be called immediately after the audio is played.  The response code from the callback webhook server is ignored.  The request is not retried.
                           value:
                             event: PLAYBACK_COMPLETE
-                            filename: doorbell.mp3
       responses:
         '202':
           description: Accepted
@@ -178,7 +179,7 @@ paths:
                     type: string
               examples:
                 Mising Field:
-                  $ref: '#/components/examples/missingFieldError'
+                  $ref: '#/components/examples/missingFieldFilenameError'
         '500':
           description: Internal Server Error
           content:
@@ -219,6 +220,10 @@ components:
       value:
         message: Unexpected error
 
-    missingFieldError:
+    missingFieldNameError:
       value:
         message: '''name'' field is required'
+
+    missingFieldFilenameError:
+      value:
+        message: '''filename'' field is required'
