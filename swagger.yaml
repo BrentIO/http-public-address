@@ -45,7 +45,7 @@ paths:
                   type: string
                   description: A unique name that briefly describes the sentence(s) being synthesized
                   minLength: 3
-                  maxLength: 50
+                  maxLength: 240
                   examples:
                     - Doorbell
                 sentences:
@@ -55,6 +55,14 @@ paths:
                     description: An array of SSML sentences that should be synthesized into a single audio file
                     examples:
                       - "<prosody volume=\"x-loud\">There is someone at the front door.</prosody>"
+                overwrite:
+                  $ref: '#/components/schemas/overwrite'
+                voice:
+                  $ref: '#/components/schemas/voice'
+                language:
+                  $ref: '#/components/schemas/language'
+                engine: 
+                  $ref: '#/components/schemas/engine'
                 callbackUrl:
                   $ref: '#/components/schemas/callbackUrl'
               required:
@@ -214,6 +222,73 @@ components:
         - SYNTHESIS_COMPLETE
         - PLAYBACK_START
         - PLAYBACK_COMPLETE
+    
+    overwrite:
+      type: boolean
+      description: Indicates if the file should be overwritten if it already exists
+      default: false
+
+    voice:
+      type: string
+      default: Matthew
+      description: Annunciation voice (see https://docs.aws.amazon.com/polly/latest/dg/generative-voices.html)
+
+    engine:
+      type: string
+      default: neural
+      description: Engine to use when syntheisizing voices (see https://docs.aws.amazon.com/polly/latest/dg/API_SynthesisTask.html)
+      enum:
+        - standard
+        - neural
+        - long-form
+        - generative
+
+    language:
+      type: string
+      default: en-US
+      description: Language to use for the rquest (see https://docs.aws.amazon.com/polly/latest/dg/API_SynthesisTask.html)
+      enum:
+        - arb
+        - cmn-CN
+        - cy-GB
+        - da-DK
+        - de-DE
+        - en-AU
+        - en-GB
+        - en-GB-WLS
+        - en-IN
+        - en-US
+        - es-ES
+        - es-MX
+        - es-US
+        - fr-CA
+        - fr-FR
+        - is-IS
+        - it-IT
+        - ja-JP
+        - hi-IN
+        - ko-KR
+        - nb-NO
+        - nl-NL
+        - pl-PL
+        - pt-BR
+        - pt-PT
+        - ro-RO
+        - ru-RU
+        - sv-SE
+        - tr-TR
+        - en-NZ
+        - en-ZA
+        - ca-ES
+        - de-AT
+        - yue-CN
+        - ar-AE
+        - fi-FI
+        - en-IE
+        - nl-BE
+        - fr-BE
+        - cs-CZ
+        - de-CH
         
   examples:
     internalServerError:
