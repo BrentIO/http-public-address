@@ -1,0 +1,7 @@
+requests
+boto3
+pydub
+flask
+waitress
+pyyaml
+simpleaudio
