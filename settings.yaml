@@ -1,0 +1,10 @@
+http_port: 8080
+log_level: info
+#playback_db: -18
+audio_path: /etc/P5Software/http-public-address/audio
+playback_wait_ms : 350
+aws:
+  region: us-east-1
+  voice: Matthew
+  engine: neural
+  language: en-US
